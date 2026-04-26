@@ -54,3 +54,7 @@ hain --help
 hain vault init ~/my-vault
 hain                        # launch interactive TUI
 ```
+
+## Community
+
+Join the discussion on [Discord](https://discord.gg/gtjCSv4ZPf).
