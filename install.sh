@@ -23,6 +23,11 @@ Options:
 Environment:
   HAIN_INSTALL_DIR  Alternative way to set installation directory
   HAIN_BIN_DIR      Alternative way to set bin directory
+
+Notes:
+  Existing flat-layout installs are migrated to a versioned layout
+  (versions/<ver>/, current symlink) on first run. Multiple versions
+  can coexist, enabling \`hain update --rollback\`.
 EOF
     exit 0
 }
@@ -125,16 +130,165 @@ verify_checksum() {
     echo "    SHA256 checksum verified."
 }
 
+# Channel inference: a semver with a prerelease suffix (e.g. "0.1.0-beta.1")
+# pins the install to the beta channel; bare versions are stable.
+infer_channel() {
+    local ver="$1"
+    case "$ver" in
+        *-*) echo "beta" ;;
+        *)   echo "stable" ;;
+    esac
+}
+
+# Atomic symlink swap: ln -sfn followed by rename keeps current valid at all
+# times. Falls back to remove+create on filesystems that don't support atomic
+# rename of symlinks (rare; documented limitation).
+swap_current_symlink() {
+    local target="$1"
+    local current_link="$INSTALL_DIR/current"
+    local tmp_link="$INSTALL_DIR/.current.tmp"
+
+    rm -f "$tmp_link"
+    ln -s "$target" "$tmp_link"
+    if mv -f "$tmp_link" "$current_link" 2>/dev/null; then
+        return 0
+    fi
+
+    # Fallback: filesystem doesn't support atomic rename for symlinks.
+    rm -f "$current_link"
+    ln -s "$target" "$current_link"
+}
+
 create_symlinks() {
     mkdir -p "$BIN_DIR"
 
     local bins=("hain" "hain-cli" "hain-tui")
     for bin in "${bins[@]}"; do
-        local src="$INSTALL_DIR/bin/$bin"
+        local src="$INSTALL_DIR/current/bin/$bin"
         local dest="$BIN_DIR/$bin"
         if [[ -e "$src" ]]; then
             ln -sf "$src" "$dest"
         fi
+    done
+}
+
+# Detect a flat-layout install (pre-versioned) and migrate it in place.
+# Flat layout: $INSTALL_DIR/{bin,dist,node,node_modules,package.json}
+# Versioned:    $INSTALL_DIR/versions/<ver>/{...} + current symlink
+migrate_flat_layout() {
+    if [[ ! -d "$INSTALL_DIR" ]]; then
+        return 0
+    fi
+    if [[ -L "$INSTALL_DIR/current" || -e "$INSTALL_DIR/current" ]]; then
+        return 0
+    fi
+    if [[ ! -f "$INSTALL_DIR/package.json" ]]; then
+        return 0
+    fi
+
+    local existing_ver
+    existing_ver="$(node -p "require('$INSTALL_DIR/package.json').version" 2>/dev/null \
+        || grep -E '"version"\s*:' "$INSTALL_DIR/package.json" \
+            | head -1 | sed -E 's/.*"version"\s*:\s*"([^"]+)".*/\1/')"
+
+    if [[ -z "$existing_ver" ]]; then
+        echo "Error: cannot read existing version from $INSTALL_DIR/package.json" >&2
+        echo "  Aborting migration to preserve your install." >&2
+        exit 1
+    fi
+
+    echo "==> Migrating flat-layout install to versioned layout (existing version: $existing_ver)..."
+
+    local version_dir="$INSTALL_DIR/versions/$existing_ver"
+    if [[ -d "$version_dir" ]]; then
+        echo "    versions/$existing_ver already exists; skipping move."
+    else
+        mkdir -p "$INSTALL_DIR/versions"
+        # Move every top-level entry except versions/, current, state.json,
+        # and dotfiles into versions/<ver>/.
+        mkdir -p "$version_dir"
+        local entry
+        for entry in "$INSTALL_DIR"/* "$INSTALL_DIR"/.[!.]*; do
+            [[ -e "$entry" ]] || continue
+            local name
+            name="$(basename "$entry")"
+            case "$name" in
+                versions|current|state.json|.current.tmp) continue ;;
+            esac
+            mv "$entry" "$version_dir/"
+        done
+    fi
+
+    swap_current_symlink "versions/$existing_ver"
+    write_state_json "$existing_ver" "" "$(infer_channel "$existing_ver")"
+    create_symlinks
+
+    echo "    Migration complete."
+}
+
+# Write state.json atomically (write to .tmp, rename).
+write_state_json() {
+    local installed="$1" previous="$2" channel="$3"
+    local now
+    now="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+    local prev_field=""
+    if [[ -n "$previous" ]]; then
+        prev_field=",
+  \"previousVersion\": \"$previous\""
+    else
+        prev_field=",
+  \"previousVersion\": null"
+    fi
+
+    cat > "$INSTALL_DIR/state.json.tmp" <<EOF
+{
+  "schemaVersion": 2,
+  "installedVersion": "$installed"$prev_field,
+  "channel": "$channel",
+  "lastCheckAt": null,
+  "latestKnownByChannel": { "stable": null, "beta": null },
+  "installSource": "curl-installer",
+  "updatedAt": "$now"
+}
+EOF
+    mv -f "$INSTALL_DIR/state.json.tmp" "$INSTALL_DIR/state.json"
+}
+
+# Prune old versions, keeping current + previousVersion. Best-effort: never
+# fails the install. Skips if state.json is unreadable.
+prune_old_versions() {
+    if [[ ! -f "$INSTALL_DIR/state.json" ]]; then
+        return 0
+    fi
+
+    local keep_current keep_previous
+    keep_current="$(node -p "
+        try { require('$INSTALL_DIR/state.json').installedVersion || ''; }
+        catch (e) { ''; }
+    " 2>/dev/null || echo "")"
+    keep_previous="$(node -p "
+        try { require('$INSTALL_DIR/state.json').previousVersion || ''; }
+        catch (e) { ''; }
+    " 2>/dev/null || echo "")"
+
+    if [[ -z "$keep_current" ]]; then
+        return 0
+    fi
+
+    local versions_dir="$INSTALL_DIR/versions"
+    [[ -d "$versions_dir" ]] || return 0
+
+    local entry name
+    for entry in "$versions_dir"/*/; do
+        [[ -d "$entry" ]] || continue
+        name="$(basename "$entry")"
+        case "$name" in
+            "$keep_current"|"$keep_previous") continue ;;
+            .staging-*) continue ;;  # in-flight; let the updater own it
+        esac
+        echo "    Removing old version: $name"
+        rm -rf "$entry"
     done
 }
 
@@ -201,6 +355,11 @@ uninstall() {
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+# Allow callers (tests) to source this file purely for its helper functions.
+if [[ "${HAIN_INSTALL_LIB_ONLY:-0}" == "1" ]]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 if [[ "$UNINSTALL" == true ]]; then
     uninstall
 fi
@@ -208,6 +367,7 @@ fi
 detect_platform
 resolve_version
 
+CHANNEL="$(infer_channel "$VERSION")"
 RELEASE_NAME="hain-${VERSION}-${PLATFORM}-${ARCH}"
 BASE_URL="https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}"
 TARBALL_URL="${BASE_URL}/${RELEASE_NAME}.tar.gz"
@@ -216,13 +376,26 @@ CHECKSUM_URL="${BASE_URL}/${RELEASE_NAME}.sha256"
 echo ""
 echo "  Hain Installer"
 echo "  ──────────────"
-echo "  Version:      ${VERSION}"
+echo "  Version:      ${VERSION} (${CHANNEL})"
 echo "  Platform:     ${PLATFORM}-${ARCH}"
 echo "  Install to:   ${INSTALL_DIR}"
 echo "  Bin dir:      ${BIN_DIR}"
 echo ""
 
-# Download to temp directory
+# Migrate any existing flat-layout install before we touch anything.
+migrate_flat_layout
+
+# Capture the previously-installed version (if any) so state.json's
+# previousVersion can support `hain update --rollback`.
+PREVIOUS_VERSION=""
+if [[ -f "$INSTALL_DIR/state.json" ]]; then
+    PREVIOUS_VERSION="$(node -p "
+        try { require('$INSTALL_DIR/state.json').installedVersion || ''; }
+        catch (e) { ''; }
+    " 2>/dev/null || echo "")"
+fi
+
+# Download to a temp directory
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -235,19 +408,43 @@ download "$CHECKSUM_URL" "$TMP_DIR/${RELEASE_NAME}.sha256" 2>/dev/null || true
 echo "==> Verifying checksum..."
 verify_checksum "$TMP_DIR/${RELEASE_NAME}.tar.gz" "$TMP_DIR/${RELEASE_NAME}.sha256"
 
-# Remove previous installation
-if [[ -d "$INSTALL_DIR" ]]; then
-    echo "==> Removing previous installation..."
-    rm -rf "$INSTALL_DIR"
+# Extract to staging, then atomically promote to versions/<ver>/.
+mkdir -p "$INSTALL_DIR/versions"
+STAGING_DIR="$INSTALL_DIR/versions/.staging-${VERSION}.$$"
+VERSION_DIR="$INSTALL_DIR/versions/${VERSION}"
+
+if [[ -d "$STAGING_DIR" ]]; then
+    rm -rf "$STAGING_DIR"
 fi
 
-echo "==> Extracting to ${INSTALL_DIR}..."
-mkdir -p "$(dirname "$INSTALL_DIR")"
-tar -xzf "$TMP_DIR/${RELEASE_NAME}.tar.gz" -C "$(dirname "$INSTALL_DIR")"
-mv "$(dirname "$INSTALL_DIR")/${RELEASE_NAME}" "$INSTALL_DIR"
+echo "==> Extracting to staging..."
+mkdir -p "$STAGING_DIR"
+tar -xzf "$TMP_DIR/${RELEASE_NAME}.tar.gz" -C "$STAGING_DIR" --strip-components=1
 
-echo "==> Creating symlinks in ${BIN_DIR}..."
+# If this exact version already lives in versions/, replace it (re-install).
+if [[ -d "$VERSION_DIR" ]]; then
+    echo "==> Replacing existing $VERSION_DIR..."
+    rm -rf "$VERSION_DIR"
+fi
+mv "$STAGING_DIR" "$VERSION_DIR"
+
+# macOS: strip quarantine attributes so Gatekeeper doesn't block ad-hoc signed
+# binaries on first launch. No-op when nothing is quarantined.
+if [[ "$PLATFORM" == "darwin" ]] && command -v xattr &>/dev/null; then
+    xattr -dr com.apple.quarantine "$VERSION_DIR" 2>/dev/null || true
+fi
+
+echo "==> Activating ${VERSION}..."
+swap_current_symlink "versions/${VERSION}"
+
+echo "==> Refreshing symlinks in ${BIN_DIR}..."
 create_symlinks
+
+echo "==> Writing state.json..."
+write_state_json "$VERSION" "$PREVIOUS_VERSION" "$CHANNEL"
+
+echo "==> Pruning old versions..."
+prune_old_versions
 
 echo ""
 echo "  Installation complete!"
@@ -268,4 +465,8 @@ echo ""
 echo "    hain --help"
 echo "    hain vault init ~/my-vault"
 echo "    hain                        # launch interactive TUI"
+echo ""
+echo "  To upgrade later, run:"
+echo ""
+echo "    hain update"
 echo ""
