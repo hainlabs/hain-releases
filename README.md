@@ -1,60 +1,60 @@
 # Hain
 
-Collaborative workspace — CLI and TUI.
+> Early release. If something breaks or confuses you, tell us on [Discord](https://discord.gg/gtjCSv4ZPf).
 
-## Install
+A private shared space for your files. Hain syncs folders directly between your devices and the people you trust. No cloud.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/hainlabs/hain-releases/main/install.sh | bash
-```
+Your files go straight from your machine to theirs, encrypted on the way. Nothing lands on a stranger's server, because there is no server in the middle.
 
-After install, add to your shell profile:
+## Download
 
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
+Grab the installer for your platform from the [latest release](../../releases/latest), or visit [hain.sh/download](https://hain.sh/download).
 
-### Options
+| Platform | Format | Status |
+|----------|--------|--------|
+| macOS (Apple Silicon) | DMG | Supported |
+| macOS (Intel) | DMG | Supported |
+| Linux x64 | AppImage, deb | Supported |
+| Linux arm64 | AppImage, deb | Supported |
+| Windows | | Planned |
 
-```bash
-# Install a specific version
-curl -fsSL https://... | bash -s -- --version 0.1.0
+### Install
 
-# Custom install directory
-curl -fsSL https://... | bash -s -- --install-dir /opt/hain --bin-dir /usr/local/bin
+- **macOS:** open the DMG and drag Hain to your Applications folder. The build is signed and notarized, so it launches with no security prompts.
+- **Linux (AppImage):** make it executable and run it.
+  ```bash
+  chmod +x Hain-*.AppImage
+  ./Hain-*.AppImage
+  ```
+- **Linux (deb):** install it with your package manager.
+  ```bash
+  sudo apt install ./hain_*.deb
+  ```
 
-# Uninstall
-curl -fsSL https://... | bash -s -- --uninstall
-```
+## Get started
 
-### Manual download
+1. Open Hain and create a space. It picks a sensible home for your files, so there is nothing to configure.
+2. Copy the share key.
+3. Send the key to whoever is joining. They paste it, and the folder is theirs. That is the whole onboarding.
 
-Download a tarball from the [latest release](https://github.com/hainlabs/hain-releases/releases/latest) and extract it:
+## Verify your download
 
-```bash
-tar xzf hain-<version>-<platform>-<arch>.tar.gz
-./hain-<version>-<platform>-<arch>/bin/hain --help
-```
-
-## Platform support
-
-| Platform | Architecture | Asset |
-|----------|-------------|-------|
-| Linux    | x64         | `hain-<ver>-linux-x64.tar.gz` |
-| Linux    | arm64       | `hain-<ver>-linux-arm64.tar.gz` |
-| macOS    | x64         | `hain-<ver>-darwin-x64.tar.gz` |
-| macOS    | arm64       | `hain-<ver>-darwin-arm64.tar.gz` |
-
-Each release includes `.sha256` checksum files. The install script verifies checksums automatically.
-
-## Quick start
+Every asset ships with a `.sha256` checksum next to it. To check one:
 
 ```bash
-hain --help
-hain vault init ~/my-vault
-hain                        # launch interactive TUI
+sha256sum -c Hain-*.sha256
 ```
+
+## Updates
+
+Hain keeps itself current. On macOS it updates in the background and asks you to restart when a new version is ready. On Linux it lets you know when an update is out and links you to the download.
 
 ## Community
 
-Join the discussion on [Discord](https://discord.gg/gtjCSv4ZPf).
+[Discord](https://discord.gg/gtjCSv4ZPf) · [Issues](../../issues) · [Discussions](../../discussions)
+
+Found a security issue? Please report it privately. See [SECURITY.md](SECURITY.md).
+
+## About
+
+Hain is made by Hain Labs. The app is free to use and closed source. Every build is signed and checksummed, so you can trust the binary you run. See [LICENSE](LICENSE).
