@@ -51,7 +51,7 @@ Hain keeps itself current. On macOS it updates in the background and asks you to
 
 ## Community
 
-[Discord](https://discord.gg/gtjCSv4ZPf) · [Issues](../../issues) · [Discussions](../../discussions)
+Questions, bug reports, and ideas are welcome on [Discord](https://discord.gg/gtjCSv4ZPf), or email us at hello@hain.sh.
 
 Found a security issue? Please report it privately. See [SECURITY.md](SECURITY.md).
 
