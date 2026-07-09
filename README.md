@@ -13,7 +13,6 @@ Grab the installer for your platform from the [latest release](../../releases/la
 | Platform | Format | Status |
 |----------|--------|--------|
 | macOS (Apple Silicon) | DMG | Supported |
-| macOS (Intel) | DMG | Supported |
 | Linux x64 | AppImage, deb | Supported |
 | Linux arm64 | AppImage, deb | Supported |
 | Windows | | Planned |
