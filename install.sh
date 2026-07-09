@@ -63,6 +63,12 @@ detect_platform() {
         *)             echo "Error: unsupported architecture: $arch" >&2; exit 1 ;;
     esac
 
+    if [[ "$os" == "darwin" && "$arch" == "x64" ]]; then
+        echo "Error: Hain for macOS is Apple Silicon (arm64) only; Intel Macs are not supported." >&2
+        echo "If you need an Intel build, tell us at hello@hain.sh" >&2
+        exit 1
+    fi
+
     PLATFORM="$os"
     ARCH="$arch"
 }
