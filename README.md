@@ -2,9 +2,9 @@
 
 > Early release. If something breaks or confuses you, tell us on [Discord](https://discord.gg/gtjCSv4ZPf).
 
-A private shared space for your files. Hain syncs folders directly between your devices and the people you trust. No cloud.
+A private shared space for your files. Hain syncs folders directly between your devices and the people you trust.
 
-Your files go straight from your machine to theirs, encrypted on the way. Nothing lands on a stranger's server, because there is no server in the middle.
+Your files go straight from your machine to theirs, encrypted on the way.
 
 ## Download
 
