@@ -46,7 +46,7 @@ sha256sum -c Hain-*.sha256
 
 ## Updates
 
-Hain keeps itself current. On macOS it updates in the background and asks you to restart when a new version is ready. On Linux it lets you know when an update is out and links you to the download.
+Hain keeps itself current. On macOS and for Linux AppImage installs it downloads the new release in the background and asks you to restart when it is ready. If you installed the deb, Hain shows a notification when a new release is out and links you to the download, since the installed file belongs to your package manager. Details at [hain.sh/docs/updating](https://hain.sh/docs/updating).
 
 ## Community
 
