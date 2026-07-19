@@ -10,7 +10,7 @@ usage() {
 Hain installer — downloads and installs the standalone CLI/TUI.
 
 Usage:
-  curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPO/main/scripts/install.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPO/main/install.sh | bash
   curl -fsSL ... | bash -s -- --version 0.1.0
 
 Options:
